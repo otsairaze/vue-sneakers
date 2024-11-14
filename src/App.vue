@@ -2,23 +2,43 @@
 import Header from './components/Header.vue'
 import CardList from './components/CardList.vue'
 import Drawer from './components/Drawer.vue'
-import { onMounted, ref, watch, reactive } from 'vue'
+import { onMounted, ref, watch, reactive, provide } from 'vue'
 import axios from 'axios'
 
 const items = ref([])
-const favorites = ref([])
+const cart = ref([])
+
+const drawerOpen = ref(false)
+
+const closeDrawer = () => {
+  drawerOpen.value = false
+}
+
+const openDrawer = () => {
+  drawerOpen.value = true
+}
 
 const filters = reactive({
   sortBy: 'title',
   searchQuery: '',
 })
 
+const addToCart = (item) => {
+  if (!item.isAdded) {
+    cart.value.push(item)
+    item.isAdded = true
+  } else {
+    cart.value.splice(cart.value.indexOf(item), 1)
+    item.isAdded = false
+  }
+}
+
 const fetchFavorites = async () => {
   try {
     const { data } = await axios.get(`https://2fdce0137fa86a1b.mokky.dev/favorites`)
 
     items.value = items.value.map((item) => {
-      const favoriteItem = data.find((obj) => obj.id === item.id)
+      const favoriteItem = data.find((obj) => obj.parentId === item.id)
 
       if (!favoriteItem) {
         return item
@@ -29,6 +49,8 @@ const fetchFavorites = async () => {
         favoriteId: favoriteItem.id,
       }
     })
+
+    console.log(items.value)
   } catch (error) {
     console.log(error)
   }
@@ -40,6 +62,26 @@ const onChangeSelect = (event) => {
 
 const onChangeSearchInput = (event) => {
   filters.searchQuery = event.target.value
+}
+
+const addToFavorite = async (item) => {
+  try {
+    item.isFavorite = !item.isFavorite
+
+    if (!item.favoriteId) {
+      const obj = {
+        parentId: item.id,
+      }
+
+      const { data } = await axios.post(`https://2fdce0137fa86a1b.mokky.dev/favorites`, obj)
+      item.favoriteId = data.id
+    } else {
+      await axios.delete(`https://2fdce0137fa86a1b.mokky.dev/favorites/${item.favoriteId}`)
+      item.favoriteId = null
+    }
+  } catch (error) {
+    console.log(error)
+  }
 }
 
 const fetchItems = async () => {
@@ -59,6 +101,7 @@ const fetchItems = async () => {
     items.value = data.map((obj) => ({
       ...obj,
       isFavorite: false,
+      favoriteId: null,
       isAdded: false,
     }))
   } catch (error) {
@@ -70,13 +113,20 @@ onMounted(async () => {
   await fetchItems()
   await fetchFavorites()
 })
+
 watch(filters, fetchItems)
+
+provide('cart', {
+  cart,
+  closeDrawer,
+  openDrawer,
+})
 </script>
 
 <template>
-  <!-- <Drawer /> -->
+  <Drawer v-if="drawerOpen" />
   <div class="bg-white w-4/5 m-auto rounded-xl shadow-xl mt-14">
-    <Header />
+    <Header @open-drawer="openDrawer" />
 
     <div class="p-10">
       <div class="flex justify-between items-center">
@@ -101,7 +151,7 @@ watch(filters, fetchItems)
       </div>
 
       <div class="mt-10">
-        <CardList :items="items" />
+        <CardList :items="items" @add-to-favorite="addToFavorite" @add-to-cart="addToCart" />
       </div>
     </div>
   </div>
